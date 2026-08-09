@@ -29,6 +29,19 @@ export async function GET(req: Request) {
             }
         });
 
+        // 获取用户存入的 BKT 贝叶斯掌握度状态表
+        const masteryStates = await prisma.knowledgeMasteryState.findMany({
+            where: { userId }
+        });
+
+        const bktStateMap = new Map<string, { masteryState: number; probability: number }>();
+        masteryStates.forEach(ms => {
+            bktStateMap.set(`${ms.subject}:${ms.tagName}`, {
+                masteryState: ms.masteryState,
+                probability: ms.probability
+            });
+        });
+
         // 整理每个知识点标签的错题分布及掌握状态
         const tagMap = new Map<string, { total: number; mastered: number; unmastered: number; items: Array<{ id: string; questionText: string; masteryLevel: number }> }>();
 
@@ -58,7 +71,7 @@ export async function GET(req: Request) {
                 }
                 entry.items.push({
                     id: item.id,
-                    questionText: item.questionText,
+                    questionText: item.questionText || "",
                     masteryLevel: item.masteryLevel
                 });
             });
@@ -81,12 +94,17 @@ export async function GET(req: Request) {
                         const tagData = tagMap.get(t) || { total: 0, mastered: 0, unmastered: 0, items: [] };
                         sectionTotal += tagData.total;
                         sectionUnmastered += tagData.unmastered;
+
+                        const bktInfo = bktStateMap.get(`math:${t}`) || { masteryState: 0, probability: 0.0 };
+
                         return {
                             tag: t,
                             totalErrors: tagData.total,
                             mastered: tagData.mastered,
                             unmastered: tagData.unmastered,
-                            masteryRate: tagData.total > 0 ? Math.round((tagData.mastered / tagData.total) * 100) : 100
+                            masteryRate: tagData.total > 0 ? Math.round((tagData.mastered / tagData.total) * 100) : 100,
+                            bktState: bktInfo.masteryState, // 0:未诊, 1:薄弱, 2:初步, 3:稳固
+                            bktProb: bktInfo.probability
                         };
                     });
 
@@ -133,12 +151,17 @@ export async function GET(req: Request) {
                     const tagData = tagMap.get(t) || { total: 0, mastered: 0, unmastered: 0, items: [] };
                     chapterTotal += tagData.total;
                     chapterUnmastered += tagData.unmastered;
+
+                    const bktInfo = bktStateMap.get(`physics:${t}`) || { masteryState: 0, probability: 0.0 };
+
                     return {
                         tag: t,
                         totalErrors: tagData.total,
                         mastered: tagData.mastered,
                         unmastered: tagData.unmastered,
-                        masteryRate: tagData.total > 0 ? Math.round((tagData.mastered / tagData.total) * 100) : 100
+                        masteryRate: tagData.total > 0 ? Math.round((tagData.mastered / tagData.total) * 100) : 100,
+                        bktState: bktInfo.masteryState, // 0:未诊, 1:薄弱, 2:初步, 3:稳固
+                        bktProb: bktInfo.probability
                     };
                 });
 

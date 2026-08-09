@@ -500,6 +500,36 @@ export class OpenAIProvider implements AIService {
         }
     }
 
+    async generateText(systemPrompt: string, userPrompt: string): Promise<string> {
+        logger.info({
+            provider: 'OpenAI',
+            model: this.model,
+            systemPromptLength: systemPrompt.length,
+            userPromptLength: userPrompt.length,
+        }, 'GenerateText Request');
+
+        try {
+            const response = await this.openai.chat.completions.create({
+                model: this.model,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                max_tokens: 8192,
+            });
+
+            const text = response.choices[0]?.message?.content || "";
+            logger.debug({ rawResponse: text }, 'GenerateText raw response');
+
+            if (!text) throw new Error("Empty response from AI");
+            return text;
+        } catch (error) {
+            logger.error({ error, stack: error instanceof Error ? error.stack : undefined }, 'Error during generateText');
+            this.handleError(error);
+            throw error;
+        }
+    }
+
     private handleError(error: unknown) {
         logger.error({ error }, 'OpenAI error');
         if (error instanceof Error) {

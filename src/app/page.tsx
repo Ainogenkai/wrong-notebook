@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -13,7 +14,7 @@ import { AnalyzeResponse, Notebook, AppConfig } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { processImageFile } from "@/lib/image-utils";
-import { Upload, BookOpen, Tags, LogOut, BarChart3, PenLine } from "lucide-react";
+import { Upload, BookOpen, Tags, LogOut, BarChart3, PenLine, Sparkles } from "lucide-react";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { BroadcastNotification } from "@/components/broadcast-notification";
 import { signOut } from "next-auth/react";
@@ -462,10 +463,10 @@ function HomeContent() {
                 </div>
 
                 {/* Action Center */}
-                <div className={initialNotebookId ? "flex justify-center mb-6" : "grid grid-cols-2 md:grid-cols-4 gap-4"}>
+                <div className={initialNotebookId ? "flex justify-center mb-6" : "grid grid-cols-2 md:grid-cols-5 gap-3"}>
                     <Button
                         size="lg"
-                        className={`h-auto py-4 text-base shadow-sm hover:shadow-md transition-all ${initialNotebookId ? "w-full max-w-md" : ""}`}
+                        className={`h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all ${initialNotebookId ? "w-full max-w-md" : ""}`}
                         variant={step === "upload" ? "default" : "secondary"}
                         onClick={() => { setStep("upload"); setInputMode("image"); }}
                     >
@@ -481,7 +482,7 @@ function HomeContent() {
                                 <Button
                                     variant="outline"
                                     size="lg"
-                                    className="w-full h-auto py-4 text-base shadow-sm hover:shadow-md transition-all border hover:border-primary/50 hover:bg-accent/50"
+                                    className="w-full h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all border hover:border-primary/50 hover:bg-accent/50"
                                 >
                                     <div className="flex items-center gap-2">
                                         <BookOpen className="h-5 w-5" />
@@ -490,11 +491,24 @@ function HomeContent() {
                                 </Button>
                             </Link>
 
+                            <Link href="/diagnostic" className="w-full">
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all border border-violet-200 hover:border-violet-500 hover:bg-violet-50/50 dark:hover:bg-violet-950/20 text-violet-700 dark:text-violet-300"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="h-5 w-5 text-violet-500" />
+                                        <span>章节诊断</span>
+                                    </div>
+                                </Button>
+                            </Link>
+
                             <Link href="/tags" className="w-full">
                                 <Button
                                     variant="outline"
                                     size="lg"
-                                    className="w-full h-auto py-4 text-base shadow-sm hover:shadow-md transition-all border hover:border-primary/50 hover:bg-accent/50"
+                                    className="w-full h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all border hover:border-primary/50 hover:bg-accent/50"
                                 >
                                     <div className="flex items-center gap-2">
                                         <Tags className="h-5 w-5" />
@@ -507,7 +521,7 @@ function HomeContent() {
                                 <Button
                                     variant="outline"
                                     size="lg"
-                                    className="w-full h-auto py-4 text-base shadow-sm hover:shadow-md transition-all border hover:border-primary/50 hover:bg-accent/50"
+                                    className="w-full h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all border hover:border-primary/50 hover:bg-accent/50"
                                 >
                                     <div className="flex items-center gap-2">
                                         <BarChart3 className="h-5 w-5" />
@@ -612,7 +626,7 @@ function HomeContent() {
 
 export default function Home() {
     return (
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense fallback={null}>
             <HomeContent />
         </Suspense>
     );

@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, AlertTriangle, CheckCircle2, BookOpen, ChevronRight, Target, Flame } from "lucide-react";
+import { Loader2, AlertTriangle, CheckCircle2, BookOpen, ChevronRight, Target, Flame, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import Link from "next/link";
 
@@ -17,6 +18,8 @@ interface TagStat {
     mastered: number;
     unmastered: number;
     masteryRate: number;
+    bktState?: number; // 0:未诊(⚪), 1:薄弱(🔴), 2:初步(🟡), 3:稳固(🟢)
+    bktProb?: number;
 }
 
 interface MathSectionStat {
@@ -66,6 +69,35 @@ export function CurriculumWeaknessStats() {
 
     const [selectedMathGrade, setSelectedMathGrade] = useState<string>("");
     const [selectedPhysicsGrade, setSelectedPhysicsGrade] = useState<string>("");
+
+    const renderBktBadge = (t: TagStat) => {
+        const state = t.bktState ?? 0;
+        if (state === 3) {
+            return (
+                <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs">
+                    🟢 稳固掌握
+                </Badge>
+            );
+        } else if (state === 2) {
+            return (
+                <Badge variant="secondary" className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 gap-1 text-xs">
+                    🟡 初步掌握
+                </Badge>
+            );
+        } else if (state === 1) {
+            return (
+                <Badge variant="destructive" className="gap-1 text-xs">
+                    🔴 薄弱漏洞
+                </Badge>
+            );
+        } else {
+            return (
+                <Badge variant="outline" className="text-muted-foreground gap-1 text-xs">
+                    ⚪ 未诊盲区
+                </Badge>
+            );
+        }
+    };
 
     useEffect(() => {
         fetchWeaknessData();
@@ -158,12 +190,18 @@ export function CurriculumWeaknessStats() {
                         <div>
                             <CardTitle className="text-xl flex items-center gap-2">
                                 <BookOpen className="h-5 w-5 text-primary" />
-                                人教版教材章节薄弱点对照表
+                                人教版教材章节大纲热力图
                             </CardTitle>
                             <CardDescription className="mt-1">
-                                对照人教版教材大纲目录，直观查看各章节、各知识点的错题分布与攻克率。
+                                对照人教版大纲，显示各知识点作答推算状态：🟢稳固 🟡初步 🔴薄弱漏洞 ⚪未诊盲区。
                             </CardDescription>
                         </div>
+                        <Link href="/diagnostic">
+                            <Button className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-md">
+                                <Sparkles className="h-4 w-4" />
+                                发起多选章节 15 分钟诊断
+                            </Button>
+                        </Link>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -242,8 +280,9 @@ export function CurriculumWeaknessStats() {
                                                                 </TableCell>
                                                             )}
                                                             <TableCell>
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex items-center justify-between gap-2">
                                                                     <span className="font-medium text-sm">{t.tag}</span>
+                                                                    {renderBktBadge(t)}
                                                                 </div>
                                                             </TableCell>
                                                             <TableCell className="text-center">
@@ -330,7 +369,10 @@ export function CurriculumWeaknessStats() {
                                                             </TableCell>
                                                         )}
                                                         <TableCell>
-                                                            <span className="font-medium text-sm">{t.tag}</span>
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="font-medium text-sm">{t.tag}</span>
+                                                                {renderBktBadge(t)}
+                                                            </div>
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             {t.totalErrors > 0 ? (

@@ -467,4 +467,34 @@ Knowledge Points: ${knowledgePoints.join(", ")}
         }
         throw new Error("AI_UNKNOWN_ERROR");
     }
+
+    async generateText(systemPrompt: string, userPrompt: string): Promise<string> {
+        logger.info({
+            provider: 'Azure OpenAI',
+            model: this.model,
+            deployment: this.deployment,
+            systemPromptLength: systemPrompt.length,
+            userPromptLength: userPrompt.length,
+        }, 'GenerateText Request');
+
+        try {
+            const response = await this.client.chat.completions.create({
+                model: this.deployment,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                max_tokens: 8192,
+            });
+
+            const text = response.choices[0]?.message?.content || "";
+            logger.debug({ rawResponse: text }, 'GenerateText raw response');
+            if (!text) throw new Error("Empty response from AI");
+            return text;
+        } catch (error) {
+            logger.error({ error, stack: error instanceof Error ? error.stack : undefined }, 'Error during generateText');
+            this.handleError(error);
+            throw error;
+        }
+    }
 }

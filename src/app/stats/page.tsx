@@ -1,17 +1,32 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { Suspense } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { WrongAnswerStats } from "@/components/wrong-answer-stats";
-import { PracticeStats } from "@/components/practice-stats";
-import { CurriculumWeaknessStats } from "@/components/curriculum-weakness-stats";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
-import { BarChart3, TrendingUp, Activity, House, BookOpenCheck } from "lucide-react";
+import { BarChart3, TrendingUp, Activity, House, BookOpenCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
 
-export default function StatsPage() {
-    const { t, language } = useLanguage();
+// 使用 dynamic import 并禁用 ssr 渲染，避免 Next.js 服务器 HTML 与客户端 DOM 不匹配引发水合报错
+const WrongAnswerStats = dynamic(
+    () => import("@/components/wrong-answer-stats").then((mod) => mod.WrongAnswerStats),
+    { ssr: false, loading: () => <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> }
+);
+
+const PracticeStats = dynamic(
+    () => import("@/components/practice-stats").then((mod) => mod.PracticeStats),
+    { ssr: false, loading: () => <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> }
+);
+
+const CurriculumWeaknessStats = dynamic(
+    () => import("@/components/curriculum-weakness-stats").then((mod) => mod.CurriculumWeaknessStats),
+    { ssr: false, loading: () => <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> }
+);
+
+function StatsContent() {
+    const { t } = useLanguage();
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -26,7 +41,13 @@ export default function StatsPage() {
                         {t.stats?.headerDesc || "View your learning progress and data analysis"}
                     </p>
                 </div>
-                <div className="ml-auto flex items-center">
+                <div className="ml-auto flex items-center gap-2">
+                    <Link href="/diagnostic">
+                        <Button className="gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-sm">
+                            <BookOpenCheck className="h-4 w-4" />
+                            发起章节诊断
+                        </Button>
+                    </Link>
                     <Link href="/">
                         <Button variant="ghost" size="icon">
                             <House className="h-5 w-5" />
@@ -62,5 +83,13 @@ export default function StatsPage() {
                 </TabsContent>
             </Tabs>
         </div>
+    );
+}
+
+export default function StatsPage() {
+    return (
+        <Suspense fallback={null}>
+            <StatsContent />
+        </Suspense>
     );
 }

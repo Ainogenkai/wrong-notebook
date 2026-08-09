@@ -436,4 +436,31 @@ export class GeminiProvider implements AIService {
         }
         throw new Error("AI_UNKNOWN_ERROR");
     }
+
+    async generateText(systemPrompt: string, userPrompt: string): Promise<string> {
+        logger.info({
+            provider: 'Gemini',
+            model: this.modelName,
+            systemPromptLength: systemPrompt.length,
+            userPromptLength: userPrompt.length,
+        }, 'GenerateText Request');
+
+        const operation = async () => {
+            const response = await this.ai.models.generateContent({
+                model: this.modelName,
+                contents: [
+                    { role: "user", parts: [{ text: systemPrompt }] },
+                    { role: "model", parts: [{ text: "好的，我明白了。" }] },
+                    { role: "user", parts: [{ text: userPrompt }] }
+                ],
+            });
+
+            const text = response.text || "";
+            logger.debug({ rawResponse: text }, 'GenerateText raw response');
+            if (!text) throw new Error("Empty response from AI");
+            return text;
+        };
+
+        return this.retryOperation(operation);
+    }
 }

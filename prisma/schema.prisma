@@ -29,6 +29,8 @@ model User {
   subjects   Subject[]
   practiceRecords PracticeRecord[]
   customTags KnowledgeTag[] // User's custom tags
+  masteryStates KnowledgeMasteryState[]
+  diagnosticQuizzes DiagnosticQuizRecord[]
 }
 
 // 统一知识点标签表 (支持无限层级)
@@ -139,3 +141,42 @@ model PracticeRecord {
   
   createdAt DateTime @default(now())
 }
+
+// 知识点贝叶斯/掌握度状态模型 (0:未诊, 1:薄弱漏洞, 2:初步掌握, 3:稳固掌握)
+model KnowledgeMasteryState {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subject      String   // "math" | "physics"等
+  tagName      String   // 规范标签名称，如 "平抛运动"
+  masteryState Int      @default(0) // 0: unassessed, 1: deficit, 2: developing, 3: mastered
+  probability  Float    @default(0.0) // BKT/贝叶斯推算概率 0.0 - 1.0
+
+  totalTested  Int      @default(0)
+  correctCount Int      @default(0)
+  guessedCount Int      @default(0)
+
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, subject, tagName])
+  @@index([userId, subject])
+}
+
+// 诊断测试历史记录表
+model DiagnosticQuizRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subject     String   // "math" | "physics"
+  grade       String   // 年级/册别
+  chapters    String   // JSON string: 所选章节数组
+  score       Int      // 最终得分
+  totalCount  Int      // 总题数
+  detailJson  String   // 详细答题记录 JSON
+
+  createdAt   DateTime @default(now())
+}
+
