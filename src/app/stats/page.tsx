@@ -3,10 +3,11 @@
 import { useLanguage } from "@/contexts/LanguageContext";
 import { WrongAnswerStats } from "@/components/wrong-answer-stats";
 import { PracticeStats } from "@/components/practice-stats";
+import { CurriculumWeaknessStats } from "@/components/curriculum-weakness-stats";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
-import { BarChart3, TrendingUp, Activity, House } from "lucide-react";
+import { BarChart3, TrendingUp, Activity, House, BookOpenCheck } from "lucide-react";
 import Link from "next/link";
 
 export default function StatsPage() {
@@ -34,18 +35,25 @@ export default function StatsPage() {
                 </div>
             </div>
 
-            <Tabs defaultValue="wrong" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-6">
-                    <TabsTrigger value="wrong" className="flex items-center gap-2">
+            <Tabs defaultValue="weakness" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 mb-6">
+                    <TabsTrigger value="weakness" className="flex items-center gap-2 font-medium">
+                        <BookOpenCheck className="h-4 w-4" />
+                        教材薄弱点对照
+                    </TabsTrigger>
+                    <TabsTrigger value="wrong" className="flex items-center gap-2 font-medium">
                         <Activity className="h-4 w-4" />
                         {t.wrongAnswerStats?.title || "Wrong Answer Stats"}
                     </TabsTrigger>
-                    <TabsTrigger value="practice" className="flex items-center gap-2">
+                    <TabsTrigger value="practice" className="flex items-center gap-2 font-medium">
                         <TrendingUp className="h-4 w-4" />
                         {t.stats?.title || "Practice Stats"}
                     </TabsTrigger>
                 </TabsList>
 
+                <TabsContent value="weakness" className="space-y-4">
+                    <CurriculumWeaknessStats />
+                </TabsContent>
                 <TabsContent value="wrong" className="space-y-4">
                     <WrongAnswerStats />
                 </TabsContent>
