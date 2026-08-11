@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { unauthorized, badRequest, internalError } from "@/lib/api-errors";
-import { getAIService } from "@/lib/ai";
 import { createLogger } from "@/lib/logger";
+import { randomUUID } from "crypto";
 
 const logger = createLogger('api:diagnostic:submit');
 
@@ -43,38 +44,70 @@ export async function POST(req: Request) {
             return badRequest("Invalid submission payload");
         }
 
+        const subjectDisplayName = subject === 'math' ? '数学' : '物理';
+        const allTagNames = [...new Set(answers.map(a => a.tag))];
+
+        // ===== Phase 1: Batch reads (2 round trips, parallelized) =====
+        const [existingMasteryStates, existingTags] = await Promise.all([
+            prisma.knowledgeMasteryState.findMany({
+                where: { userId, subject, tagName: { in: allTagNames } }
+            }),
+            prisma.knowledgeTag.findMany({
+                where: { subject, name: { in: allTagNames } }
+            }),
+        ]);
+
+        // Build tag ID map: existing IDs + pre-generated IDs for missing tags
+        const tagIdMap = new Map<string, string>();
+        existingTags.forEach(t => tagIdMap.set(t.name, t.id));
+
+        const missingTags: Array<{ id: string; name: string; subject: string; isSystem: boolean }> = [];
+        for (const tagName of allTagNames) {
+            if (!tagIdMap.has(tagName)) {
+                const newId = randomUUID();
+                tagIdMap.set(tagName, newId);
+                missingTags.push({ id: newId, name: tagName, subject, isSystem: true });
+            }
+        }
+
+        // Build mastery state map for in-memory lookup
+        const masteryMap = new Map(existingMasteryStates.map(ms => [ms.tagName, ms]));
+
+        // ===== Phase 2: In-memory computation (0 DB round trips) =====
         let correctTotal = 0;
-        let guessedCorrect = 0;
         let wrongTotal = 0;
 
-        // 分类统计
         const wrongTags: string[] = [];
         const guessedTags: string[] = [];
         const correctTags: string[] = [];
-        const skillPoints: string[] = []; // 从 explanation 中提取的能力点
+        const skillPoints: string[] = [];
 
-        // 查找或自动创建学科对象
-        let userSubjectObj = await prisma.subject.findFirst({
-            where: {
-                userId,
-                name: { contains: subject === 'math' ? '数学' : '物理' }
-            }
-        });
+        const newMasteryStates: Array<{
+            userId: string; subject: string; tagName: string;
+            masteryState: number; probability: number;
+            totalTested: number; correctCount: number; guessedCount: number;
+        }> = [];
+        const masteryUpdates: Array<{
+            id: string; masteryState: number; probability: number;
+            totalTested: number; correctCount: number; guessedCount: number;
+        }> = [];
 
-        if (!userSubjectObj) {
-            userSubjectObj = await prisma.subject.create({
-                data: { userId, name: subject === 'math' ? '数学' : '物理' }
-            });
-        }
+        const errorItemsToCreate: Array<{
+            data: {
+                userId: string; subjectId: string; originalImageUrl: string;
+                questionText: string; answerText: string; analysis: string;
+                wrongAnswerText: string; mistakeAnalysis: string;
+                mistakeStatus: string; gradeSemester: string; masteryLevel: number;
+                tags?: { connect: { id: string }[] };
+            };
+        }> = [];
 
-        // 逐题评估
         for (const ans of answers) {
             const isTrulyMastered = ans.isCorrect && !ans.isGuessed;
 
             if (ans.isCorrect) {
                 correctTotal += 1;
                 if (ans.isGuessed) {
-                    guessedCorrect += 1;
                     guessedTags.push(ans.tag);
                 } else {
                     correctTags.push(ans.tag);
@@ -84,7 +117,7 @@ export async function POST(req: Request) {
                 wrongTags.push(ans.tag);
             }
 
-            // 从 explanation 中提取能力点（最后一句通常是能力点说明）
+            // Extract skill point from explanation
             if (ans.explanation) {
                 const lastSentence = ans.explanation.split(/[。\n]/).filter(s => s.trim()).pop();
                 if (lastSentence && (lastSentence.includes('考察') || lastSentence.includes('能力') || lastSentence.includes('核心'))) {
@@ -92,16 +125,11 @@ export async function POST(req: Request) {
                 }
             }
 
-            // 更新 BKT 知识点状态
-            const existingState = await prisma.knowledgeMasteryState.findUnique({
-                where: {
-                    userId_subject_tagName: { userId, subject, tagName: ans.tag }
-                }
-            });
-
-            const newTotalTested = (existingState?.totalTested || 0) + 1;
-            const newCorrectCount = (existingState?.correctCount || 0) + (ans.isCorrect ? 1 : 0);
-            const newGuessedCount = (existingState?.guessedCount || 0) + (ans.isGuessed ? 1 : 0);
+            // Compute BKT values
+            const existing = masteryMap.get(ans.tag);
+            const newTotalTested = (existing?.totalTested || 0) + 1;
+            const newCorrectCount = (existing?.correctCount || 0) + (ans.isCorrect ? 1 : 0);
+            const newGuessedCount = (existing?.guessedCount || 0) + (ans.isGuessed ? 1 : 0);
 
             let newProbability = newCorrectCount / newTotalTested;
             if (ans.isGuessed) newProbability *= 0.7;
@@ -117,37 +145,33 @@ export async function POST(req: Request) {
                 newMasteryState = 2;
             }
 
-            await prisma.knowledgeMasteryState.upsert({
-                where: {
-                    userId_subject_tagName: { userId, subject, tagName: ans.tag }
-                },
-                update: {
+            if (existing) {
+                masteryUpdates.push({
+                    id: existing.id,
                     masteryState: newMasteryState,
                     probability: newProbability,
                     totalTested: newTotalTested,
                     correctCount: newCorrectCount,
                     guessedCount: newGuessedCount,
-                },
-                create: {
+                });
+            } else {
+                newMasteryStates.push({
                     userId, subject, tagName: ans.tag,
                     masteryState: newMasteryState,
                     probability: newProbability,
                     totalTested: newTotalTested,
                     correctCount: newCorrectCount,
                     guessedCount: newGuessedCount,
-                }
-            });
-
-            // 做错或猜对 ➔ 自动归档到错题本
-            if (!isTrulyMastered) {
-                const tagObj = await prisma.knowledgeTag.findFirst({
-                    where: { subject, name: ans.tag }
                 });
+            }
 
-                await prisma.errorItem.create({
+            // Collect error items for archival (wrong or guessed)
+            if (!isTrulyMastered) {
+                const tagId = tagIdMap.get(ans.tag);
+                errorItemsToCreate.push({
                     data: {
                         userId,
-                        subjectId: userSubjectObj.id,
+                        subjectId: "", // filled after subject upsert
                         originalImageUrl: "/icons/icon.png",
                         questionText: ans.questionText,
                         answerText: ans.correctAnswer,
@@ -159,22 +183,85 @@ export async function POST(req: Request) {
                         mistakeStatus: ans.isCorrect ? "unknown" : "wrong_attempt",
                         gradeSemester: grade,
                         masteryLevel: 0,
-                        tags: tagObj ? { connect: [{ id: tagObj.id }] } : undefined
+                        tags: tagId ? { connect: [{ id: tagId }] } : undefined,
                     }
                 });
             }
         }
 
-        // ===== 生成自然语言精准诊断报告 =====
-        let reportSummary = "";
+        // Build practice records for all answers
+        const practiceRecords = answers.map(ans => ({
+            userId,
+            subject: subjectDisplayName,
+            isCorrect: ans.isCorrect,
+            source: "diagnostic",
+        }));
 
-        // 构建掌握良好项
+        // ===== Phase 3: Subject upsert (1 round trip) =====
+        const userSubjectObj = await prisma.subject.upsert({
+            where: { name_userId: { name: subjectDisplayName, userId } },
+            create: { name: subjectDisplayName, userId },
+            update: {},
+        });
+
+        // Fill subjectId into error items
+        errorItemsToCreate.forEach(item => { item.data.subjectId = userSubjectObj.id; });
+
+        // ===== Phase 4: Batch transaction write (1 round trip commit) =====
+        // Build transaction operations array (ordered: tags first so ErrorItem connect works)
+        const txOps: Prisma.PrismaPromise<any>[] = [];
+
+        // 1. Create missing KnowledgeTags (batch)
+        if (missingTags.length > 0) {
+            txOps.push(prisma.knowledgeTag.createMany({ data: missingTags }));
+        }
+
+        // 2. Create new KnowledgeMasteryStates (batch)
+        if (newMasteryStates.length > 0) {
+            txOps.push(prisma.knowledgeMasteryState.createMany({ data: newMasteryStates }));
+        }
+
+        // 3. Update existing KnowledgeMasteryStates
+        for (const u of masteryUpdates) {
+            txOps.push(prisma.knowledgeMasteryState.update({
+                where: { id: u.id },
+                data: {
+                    masteryState: u.masteryState,
+                    probability: u.probability,
+                    totalTested: u.totalTested,
+                    correctCount: u.correctCount,
+                    guessedCount: u.guessedCount,
+                }
+            }));
+        }
+
+        // 4. Create ErrorItems with tag connections
+        for (const item of errorItemsToCreate) {
+            txOps.push(prisma.errorItem.create({ data: item.data }));
+        }
+
+        // 5. Create PracticeRecords (batch) — links diagnostic to practice stats
+        txOps.push(prisma.practiceRecord.createMany({ data: practiceRecords }));
+
+        // 6. Create DiagnosticQuizRecord
+        txOps.push(prisma.diagnosticQuizRecord.create({
+            data: {
+                userId, subject, grade,
+                chapters: JSON.stringify(selectedChapters),
+                score: correctTotal,
+                totalCount: answers.length,
+                detailJson: JSON.stringify(answers)
+            }
+        }));
+
+        await prisma.$transaction(txOps);
+
+        // ===== Generate natural language report =====
         const strengths: string[] = [];
         if (correctTags.length > 0) {
             strengths.push(`掌握良好：${correctTags.join("、")}`);
         }
 
-        // 构建关键卡点
         const weaknesses: string[] = [];
         if (wrongTags.length > 0) {
             weaknesses.push(`存在薄弱：${[...new Set(wrongTags)].join("、")}`);
@@ -183,29 +270,16 @@ export async function POST(req: Request) {
             weaknesses.push(`凭直觉猜对（侥幸项）：${[...new Set(guessedTags)].join("、")}`);
         }
 
-        // 能力点汇总
         const skillSummary = [...new Set(skillPoints)].slice(0, 5);
 
-        reportSummary = [
+        const reportSummary = [
             strengths.length > 0 ? `✅ ${strengths.join("；")}` : null,
             weaknesses.length > 0 ? `⚠️ ${weaknesses.join("；")}` : null,
             skillSummary.length > 0 ? `🔍 核心能力卡点：${skillSummary.join("；")}` : null,
         ].filter(Boolean).join("\n");
 
-        // 保存诊断记录
-        const record = await prisma.diagnosticQuizRecord.create({
-            data: {
-                userId, subject, grade,
-                chapters: JSON.stringify(selectedChapters),
-                score: correctTotal,
-                totalCount: answers.length,
-                detailJson: JSON.stringify(answers)
-            }
-        });
-
         return NextResponse.json({
             success: true,
-            recordId: record.id,
             score: correctTotal,
             totalCount: answers.length,
             masteryRate: Math.round((correctTotal / answers.length) * 100),

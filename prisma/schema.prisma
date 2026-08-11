@@ -138,6 +138,7 @@ model PracticeRecord {
   subject   String?  // e.g. "Math", "Physics"
   difficulty String? // "easy", "medium", "hard", "harder"
   isCorrect Boolean?
+  source     String? @default("manual") // "manual" | "diagnostic"
   
   createdAt DateTime @default(now())
 }

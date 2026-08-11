@@ -174,6 +174,16 @@ ${historySummary}
                 cleanedResponse = cleanedResponse.substring(arrStart, arrEnd + 1);
             }
 
+            // 修复 AI 返回 JSON 中 LaTeX 的非法反斜杠转义
+            // JSON 标准只允许 \" \\ \/ \b \f \n \r \t \uXXXX
+            // AI 返回的 LaTeX 如 \cos \frac \alpha 等单反斜杠会解析失败
+            // 修复策略：将非标准转义中的单反斜杠替换为双反斜杠
+            // 安全方式：先转义双反斜杠占位，再修复单反斜杠为双反斜杠，最后还原
+            cleanedResponse = cleanedResponse
+                .replace(/\\\\/g, '\u0000DOUBLE_BACKSLASH\u0000')
+                .replace(/\\/g, '\\\\')
+                .replace(/\u0000DOUBLE_BACKSLASH\u0000/g, '\\\\');
+
             questions = JSON.parse(cleanedResponse);
         } catch (e) {
             logger.error({ error: e, rawResponse: aiResponse }, "Failed to parse AI diagnostic questions");
