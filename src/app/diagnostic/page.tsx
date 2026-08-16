@@ -25,7 +25,8 @@ import {
     BookOpen,
     Trophy,
     Flame,
-    House
+    House,
+    SkipForward
 } from "lucide-react";
 import Link from "next/link";
 
@@ -35,6 +36,7 @@ interface Question {
     tag: string;
     type: "choice" | "blank";
     questionText: string;
+    svgCode?: string;
     options?: string[];
     correctAnswer: string;
     explanation: string;
@@ -54,7 +56,7 @@ export default function DiagnosticPage() {
     const [currentIndex, setCurrentIndex] = useState(0);
 
     // 用户答题记录
-    const [userAnswers, setUserAnswers] = useState<Record<string, { answer: string; isGuessed: boolean }>>({});
+    const [userAnswers, setUserAnswers] = useState<Record<string, { answer: string; isGuessed: boolean; isSkipped?: boolean }>>({});
 
     // 提交后诊断报告数据
     const [report, setReport] = useState<{
@@ -159,11 +161,35 @@ export default function DiagnosticPage() {
         }));
     };
 
+    const handleSkipQuestion = (questionId: string) => {
+        setUserAnswers(prev => ({
+            ...prev,
+            [questionId]: {
+                answer: "",
+                isGuessed: false,
+                isSkipped: true
+            }
+        }));
+
+        if (currentIndex < questions.length - 1) {
+            setCurrentIndex(prev => prev + 1);
+        }
+    };
+
     // 提交整套测试结果
     const handleSubmitQuiz = async () => {
         setLoading(true);
 
-        const answersPayload = questions.map(q => {
+        // 过滤掉标记为跳过的题目（结算隔离：不计分、不写BKT、不归档错题）
+        const validQuestions = questions.filter(q => !userAnswers[q.id]?.isSkipped);
+
+        if (validQuestions.length === 0) {
+            alert("你跳过了全部题目，无法生成诊断报告");
+            setLoading(false);
+            return;
+        }
+
+        const answersPayload = validQuestions.map(q => {
             const userAns = userAnswers[q.id]?.answer || "";
             const isGuessed = userAnswers[q.id]?.isGuessed || false;
 
@@ -217,6 +243,20 @@ export default function DiagnosticPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const formatSvgCode = (svgCode?: string) => {
+        if (!svgCode) return "";
+        let code = svgCode.trim();
+        if (code.startsWith("&lt;")) {
+            code = code
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&amp;/g, "&");
+        }
+        return code;
     };
 
     const currentQ = questions[currentIndex];
@@ -419,6 +459,16 @@ export default function DiagnosticPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6">
+                            {/* SVG 矢量示意图渲染 */}
+                            {currentQ.svgCode && (
+                                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800 flex justify-center items-center overflow-x-auto">
+                                    <div
+                                        className="w-full flex justify-center [&>svg]:w-full [&>svg]:max-w-[400px] [&>svg]:h-auto [&>svg]:max-h-60 [&>svg]:mx-auto"
+                                        dangerouslySetInnerHTML={{ __html: formatSvgCode(currentQ.svgCode) }}
+                                    />
+                                </div>
+                            )}
+
                             {/* 选择题选项卡 */}
                             {currentQ.type === "choice" && currentQ.options && (
                                 <div className="space-y-2.5">
@@ -490,21 +540,33 @@ export default function DiagnosticPage() {
                             上一题
                         </Button>
 
-                        {currentIndex < questions.length - 1 ? (
-                            <Button onClick={() => setCurrentIndex(prev => prev + 1)} className="gap-1.5">
-                                下一题
-                                <ArrowRight className="h-4 w-4" />
-                            </Button>
-                        ) : (
+                        <div className="flex items-center gap-2">
                             <Button
-                                onClick={handleSubmitQuiz}
-                                disabled={loading}
-                                className="bg-green-600 hover:bg-green-700 text-white gap-1.5"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSkipQuestion(currentQ.id)}
+                                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1 text-xs"
                             >
-                                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
-                                完成扫描，生成报告
+                                <SkipForward className="h-3.5 w-3.5" />
+                                跳过 / 废弃本题
                             </Button>
-                        )}
+
+                            {currentIndex < questions.length - 1 ? (
+                                <Button onClick={() => setCurrentIndex(prev => prev + 1)} className="gap-1.5">
+                                    下一题
+                                    <ArrowRight className="h-4 w-4" />
+                                </Button>
+                            ) : (
+                                <Button
+                                    onClick={handleSubmitQuiz}
+                                    disabled={loading}
+                                    className="bg-green-600 hover:bg-green-700 text-white gap-1.5"
+                                >
+                                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
+                                    完成扫描，生成报告
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
@@ -613,6 +675,7 @@ export default function DiagnosticPage() {
                         <CardContent className="space-y-4">
                             {questions.map((q, idx) => {
                                 const ansInfo = userAnswers[q.id];
+                                const isSkipped = ansInfo?.isSkipped;
                                 const isCorrect = q.type === "choice"
                                     ? (ansInfo?.answer || "").toUpperCase() === q.correctAnswer.toUpperCase()
                                     : (ansInfo?.answer || "").trim() === q.correctAnswer.trim();
@@ -626,21 +689,29 @@ export default function DiagnosticPage() {
                                                 <Badge variant="outline" className="border-primary/40 text-primary">{q.tag}</Badge>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                {ansInfo?.isGuessed && (
-                                                    <Badge variant="outline" className="text-amber-600 border-amber-300">
-                                                        凭感觉猜的
-                                                    </Badge>
-                                                )}
-                                                {isCorrect ? (
-                                                    <Badge className="bg-green-600">
-                                                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                                                        正确
+                                                {isSkipped ? (
+                                                    <Badge variant="outline" className="text-muted-foreground">
+                                                        已跳过/废弃
                                                     </Badge>
                                                 ) : (
-                                                    <Badge variant="destructive">
-                                                        <XCircle className="h-3.5 w-3.5 mr-1" />
-                                                        错误 (已归档)
-                                                    </Badge>
+                                                    <>
+                                                        {ansInfo?.isGuessed && (
+                                                            <Badge variant="outline" className="text-amber-600 border-amber-300">
+                                                                凭感觉猜的
+                                                            </Badge>
+                                                        )}
+                                                        {isCorrect ? (
+                                                            <Badge className="bg-green-600">
+                                                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                                                正确
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="destructive">
+                                                                <XCircle className="h-3.5 w-3.5 mr-1" />
+                                                                错误 (已归档)
+                                                            </Badge>
+                                                        )}
+                                                    </>
                                                 )}
                                             </div>
                                         </div>
@@ -649,8 +720,17 @@ export default function DiagnosticPage() {
                                             <MarkdownRenderer content={q.questionText} />
                                         </div>
 
+                                        {q.svgCode && (
+                                            <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-200 dark:border-slate-800 flex justify-center items-center overflow-x-auto my-2">
+                                                <div
+                                                    className="w-full flex justify-center [&>svg]:w-full [&>svg]:max-w-[400px] [&>svg]:h-auto [&>svg]:max-h-48 [&>svg]:mx-auto"
+                                                    dangerouslySetInnerHTML={{ __html: formatSvgCode(q.svgCode) }}
+                                                />
+                                            </div>
+                                        )}
+
                                         <div className="text-xs text-muted-foreground pt-2 border-t flex flex-wrap gap-4">
-                                            <span>你的回答: <strong className="text-foreground">{ansInfo?.answer || "未填"}</strong></span>
+                                            <span>你的回答: <strong className="text-foreground">{isSkipped ? "已跳过" : (ansInfo?.answer || "未填")}</strong></span>
                                             <span>正确答案: <strong className="text-green-600">{q.correctAnswer}</strong></span>
                                         </div>
 

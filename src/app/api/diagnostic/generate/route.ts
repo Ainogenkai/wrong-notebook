@@ -16,6 +16,7 @@ export interface DiagnosticQuestion {
     tag: string;
     type: "choice" | "blank";
     questionText: string;
+    svgCode?: string;
     options?: string[];
     correctAnswer: string;
     explanation: string;
@@ -137,14 +138,17 @@ ${historySummary}
 1. 总共生成 ${targetTags.length} 道题目，每道题严格对应上述列表中的一个知识点。
 2. 题型必须包含单项选择题（choice）或关键步骤填空/精简计算题（blank）。
 3. 【严禁超纲】：题目难度控制在人教版${grade}基础到中等水平，切勿出现更高级年级或超纲概念。这是快速诊断，不是竞赛，不要出偏题怪题。
-4. 【情境化包装】：尽量将题目包装为贴近真实历史工程、生活场景的情境题（如二战雷达测距、古代建筑测量、航海导航等），但底层数学/物理模型必须严谨且符合大纲。
+4. 【情境化包装与图形规范】：
+   - 尽量将题目包装为贴近真实历史工程、生活场景的情境题（如二战雷达测距、古代建筑测量、航海导航等），但底层数学/物理模型必须严谨且符合大纲。
+   - 【SVG 绘图规范】：若题目涉及几何图形、函数图像、立体几何（隐藏边需用虚线 stroke-dasharray="4" 绘制）、物体受力分析（含坐标轴、力向量箭头）、简单电路图（电源、电阻、开关等），**必须**在 svgCode 字段中输出干净规范的 SVG 代码。标签使用 <svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg">，配色简洁美观（如使用 navy/teal/slate/coral 等深色线条与轻微填充）。
+   - 【无图强约束】：若该题没有输出 svgCode，题目文字必须为 **100% 纯文本自包含表述**，**严禁**出现“如图所示”、“如下图”、“见图”、“如图”等任何指代图形的词汇！
 5. 选择题必须提供 4 个选项 (A, B, C, D) 且只有一个正确答案。
 6. 填空/精简题解答需保持简明，直接给出核心步骤的短数字或短文本答案。
-7. 题目内容中的数学/物理公式使用 LaTeX 格式 (例如 $v = v_0 + at$)。
+7. 题目内容中的数学/物理公式使用 LaTeX 格式，JSON 字符串中所有的 LaTeX 反斜杠必须双写转义 (例如 \\\\v = \\\\v_0 + at, \\\\frac{a}{b}, \\\\theta, \\\\pi)。
 8. 每道题的 explanation 字段中，除了给出解析外，请用一句话指出"这道题考察的核心能力点是什么"（如"受力分析"、"公式变形"、"图像判定"、"含参讨论"等）。
 
 【返回 JSON 格式要求】：
-必须严格返回以下 JSON 格式数组，不要包含任何 Markdown 标记或多余文字：
+必须严格返回合法 JSON 格式数组，不要包含任何 Markdown 标记或多余文字。JSON 字符串内的双引号和反斜杠请严格遵守 JSON 转义规则：
 [
   {
     "id": "q1",
@@ -152,11 +156,11 @@ ${historySummary}
     "tag": "知识点名称",
     "type": "choice",
     "questionText": "题目描述文本",
+    "svgCode": "<svg viewBox=\\\"0 0 400 240\\\" xmlns=\\\"http://www.w3.org/2000/svg\\\">...</svg>",
     "options": ["A. xxx", "B. xxx", "C. xxx", "D. xxx"],
     "correctAnswer": "A",
     "explanation": "简要解析 + 核心能力点说明"
-  },
-  ...
+  }
 ]`;
 
         const aiService = getAIService();
@@ -174,15 +178,13 @@ ${historySummary}
                 cleanedResponse = cleanedResponse.substring(arrStart, arrEnd + 1);
             }
 
-            // 修复 AI 返回 JSON 中 LaTeX 的非法反斜杠转义
-            // JSON 标准只允许 \" \\ \/ \b \f \n \r \t \uXXXX
-            // AI 返回的 LaTeX 如 \cos \frac \alpha 等单反斜杠会解析失败
-            // 修复策略：将非标准转义中的单反斜杠替换为双反斜杠
-            // 安全方式：先转义双反斜杠占位，再修复单反斜杠为双反斜杠，最后还原
-            cleanedResponse = cleanedResponse
-                .replace(/\\\\/g, '\u0000DOUBLE_BACKSLASH\u0000')
-                .replace(/\\/g, '\\\\')
-                .replace(/\u0000DOUBLE_BACKSLASH\u0000/g, '\\\\');
+            // 安全修复 AI 返回 JSON 中非标准反斜杠转义（如 LaTeX 的 \frac \theta \Delta）
+            // 1. 保护合法双反斜杠 \\
+            cleanedResponse = cleanedResponse.replace(/\\\\/g, '\u0000DBL_BS\u0000');
+            // 2. 修复单反斜杠的非法 JSON 转义（保留标准的 \" \/ \b \f \n \r \t \uXXXX）
+            cleanedResponse = cleanedResponse.replace(/\\([^"\\\/bfnrtu])/g, '\\\\$1');
+            // 3. 还原双反斜杠
+            cleanedResponse = cleanedResponse.replace(/\u0000DBL_BS\u0000/g, '\\\\');
 
             questions = JSON.parse(cleanedResponse);
         } catch (e) {

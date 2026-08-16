@@ -168,12 +168,24 @@ export async function POST(req: Request) {
             // Collect error items for archival (wrong or guessed)
             if (!isTrulyMastered) {
                 const tagId = tagIdMap.get(ans.tag);
+                let fullQuestionText = ans.questionText;
+                if (ans.options && Array.isArray(ans.options) && ans.options.length > 0) {
+                    const formattedOptions = ans.options.map((opt, idx) => {
+                        const letter = String.fromCharCode(65 + idx);
+                        if (opt.trim().match(/^[A-D][.、\s]/i)) {
+                            return opt.trim();
+                        }
+                        return `${letter}. ${opt.trim()}`;
+                    });
+                    fullQuestionText += "\n\n" + formattedOptions.join("\n");
+                }
+
                 errorItemsToCreate.push({
                     data: {
                         userId,
                         subjectId: "", // filled after subject upsert
                         originalImageUrl: "/icons/icon.png",
-                        questionText: ans.questionText,
+                        questionText: fullQuestionText,
                         answerText: ans.correctAnswer,
                         analysis: ans.explanation,
                         wrongAnswerText: ans.userAnswer ? `提交的答案: ${ans.userAnswer}` : "未作答",
