@@ -1,6 +1,6 @@
 /**
  * /api/settings API 集成测试
- * 测试应用配置获取和更新接口
+ * 测试应用配置获取和更新接口（含鉴权保护）
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
         ...config,
         aiProvider: config.aiProvider || 'gemini',
     })),
+    mockGetServerSession: vi.fn(() => Promise.resolve(null)),
 }));
 
 // Mock config module
@@ -41,8 +42,32 @@ vi.mock('@/lib/config', () => ({
     updateAppConfig: mocks.mockUpdateAppConfig,
 }));
 
+// Mock next-auth
+vi.mock('next-auth', () => ({
+    getServerSession: mocks.mockGetServerSession,
+}));
+
+vi.mock('@/lib/auth', () => ({
+    authOptions: {},
+}));
+
 // Import after mocks
 import { GET, POST } from '@/app/api/settings/route';
+import { getServerSession } from 'next-auth';
+
+const adminSession = {
+    user: { id: 'admin-1', email: 'admin@example.com', name: 'Admin', role: 'admin' },
+    expires: '2025-12-31',
+} as any;
+
+const userSession = {
+    user: { id: 'user-1', email: 'user@example.com', name: 'User', role: 'user' },
+    expires: '2025-12-31',
+} as any;
+
+const asAdmin = () => vi.mocked(getServerSession).mockResolvedValue(adminSession);
+const asUser = () => vi.mocked(getServerSession).mockResolvedValue(userSession);
+const asAnonymous = () => vi.mocked(getServerSession).mockResolvedValue(null);
 
 describe('/api/settings', () => {
     beforeEach(() => {
@@ -50,36 +75,66 @@ describe('/api/settings', () => {
     });
 
     describe('GET /api/settings', () => {
-        it('应该返回完整的应用配置', async () => {
+        it('未登录应该返回 401', async () => {
+            asAnonymous();
+            const response = await GET();
+            expect(response.status).toBe(401);
+            expect(mocks.mockGetAppConfig).not.toHaveBeenCalled();
+        });
+
+        it('管理员应该获取完整配置（含 API Key）', async () => {
+            asAdmin();
             const response = await GET();
             const data = await response.json();
 
             expect(response.status).toBe(200);
-            expect(data.aiProvider).toBe('gemini');
-            expect(data.openai).toBeDefined();
-            expect(data.gemini).toBeDefined();
-            expect(data.prompts).toBeDefined();
-        });
-
-        it('应该返回 AI 提供商设置', async () => {
-            const response = await GET();
-            const data = await response.json();
-
             expect(data.openai.instances[0].apiKey).toBe('sk-test-key');
             expect(data.gemini.apiKey).toBe('AIza-test-key');
-            expect(data.gemini.model).toBe('gemini-2.5-flash');
+            expect(data.allowRegistration).toBe(true);
         });
 
-        it('应该返回注册开关状态', async () => {
+        it('普通用户应该获取掩码配置（API Key 脱敏）', async () => {
+            asUser();
             const response = await GET();
             const data = await response.json();
 
+            expect(response.status).toBe(200);
+            expect(data.openai.instances[0].apiKey).toBe('********');
+            expect(data.gemini.apiKey).toBe('********');
+            expect(data.gemini.model).toBe('gemini-2.5-flash');
             expect(data.allowRegistration).toBe(true);
         });
     });
 
     describe('POST /api/settings', () => {
-        it('应该成功更新 AI 提供商', async () => {
+        it('未登录应该返回 401', async () => {
+            asAnonymous();
+            const request = new Request('http://localhost/api/settings', {
+                method: 'POST',
+                body: JSON.stringify({ aiProvider: 'openai' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const response = await POST(request);
+            expect(response.status).toBe(401);
+            expect(mocks.mockUpdateAppConfig).not.toHaveBeenCalled();
+        });
+
+        it('普通用户应该返回 403', async () => {
+            asUser();
+            const request = new Request('http://localhost/api/settings', {
+                method: 'POST',
+                body: JSON.stringify({ aiProvider: 'openai' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const response = await POST(request);
+            expect(response.status).toBe(403);
+            expect(mocks.mockUpdateAppConfig).not.toHaveBeenCalled();
+        });
+
+        it('管理员应该成功更新 AI 提供商', async () => {
+            asAdmin();
             const request = new Request('http://localhost/api/settings', {
                 method: 'POST',
                 body: JSON.stringify({ aiProvider: 'openai' }),
@@ -93,9 +148,11 @@ describe('/api/settings', () => {
             expect(mocks.mockUpdateAppConfig).toHaveBeenCalledWith(
                 expect.objectContaining({ aiProvider: 'openai' })
             );
+            expect(data.aiProvider).toBe('openai');
         });
 
-        it('应该成功更新 OpenAI 配置', async () => {
+        it('管理员应该成功更新 OpenAI 配置', async () => {
+            asAdmin();
             const newConfig = {
                 openai: {
                     instances: [{
@@ -132,7 +189,8 @@ describe('/api/settings', () => {
             );
         });
 
-        it('应该成功更新 Gemini 配置', async () => {
+        it('管理员应该成功更新 Gemini 配置', async () => {
+            asAdmin();
             const newConfig = {
                 gemini: {
                     apiKey: 'AIza-new-key',
@@ -158,7 +216,8 @@ describe('/api/settings', () => {
             );
         });
 
-        it('应该保留掩码 API Key（********）的原有值', async () => {
+        it('管理员应该保留掩码 API Key（********）的原有值', async () => {
+            asAdmin();
             const request = new Request('http://localhost/api/settings', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -187,7 +246,8 @@ describe('/api/settings', () => {
             expect(updateCall.gemini?.apiKey).toBe('AIza-test-key');
         });
 
-        it('应该成功更新自定义提示词', async () => {
+        it('管理员应该成功更新自定义提示词', async () => {
+            asAdmin();
             const newConfig = {
                 prompts: {
                     analyze: '自定义分析提示词',
@@ -213,7 +273,8 @@ describe('/api/settings', () => {
             );
         });
 
-        it('应该成功更新注册开关', async () => {
+        it('管理员应该成功更新注册开关', async () => {
+            asAdmin();
             const request = new Request('http://localhost/api/settings', {
                 method: 'POST',
                 body: JSON.stringify({ allowRegistration: false }),
@@ -228,7 +289,8 @@ describe('/api/settings', () => {
             );
         });
 
-        it('应该处理更新失败的情况', async () => {
+        it('管理员应该处理更新失败的情况', async () => {
+            asAdmin();
             mocks.mockUpdateAppConfig.mockImplementationOnce(() => {
                 throw new Error('Write failed');
             });

@@ -1,6 +1,6 @@
 {
   "name": "wrong-notebook",
-  "version": "1.9.1",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
@@ -55,7 +55,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
