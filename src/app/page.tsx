@@ -14,7 +14,7 @@ import { AnalyzeResponse, Notebook, AppConfig } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { processImageFile } from "@/lib/image-utils";
-import { Upload, BookOpen, Tags, LogOut, BarChart3, PenLine, Sparkles } from "lucide-react";
+import { Upload, BookOpen, Tags, LogOut, BarChart3, PenLine, Sparkles, Cpu, Layers } from "lucide-react";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { BroadcastNotification } from "@/components/broadcast-notification";
 import { signOut } from "next-auth/react";
@@ -463,7 +463,7 @@ function HomeContent() {
                 </div>
 
                 {/* Action Center */}
-                <div className={initialNotebookId ? "flex justify-center mb-6" : "grid grid-cols-2 md:grid-cols-5 gap-3"}>
+                <div className={initialNotebookId ? "flex justify-center mb-6" : "grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3"}>
                     <Button
                         size="lg"
                         className={`h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all ${initialNotebookId ? "w-full max-w-md" : ""}`}
@@ -487,6 +487,35 @@ function HomeContent() {
                                     <div className="flex items-center gap-2">
                                         <BookOpen className="h-5 w-5" />
                                         <span>{t.app.viewNotebook}</span>
+                                    </div>
+                                </Button>
+                            </Link>
+
+                            <Link href="/cards" className="w-full">
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all border border-amber-200 hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 text-amber-700 dark:text-amber-300"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Layers className="h-5 w-5 text-amber-500" />
+                                        <span>我的卡组</span>
+                                    </div>
+                                </Button>
+                            </Link>
+
+                            <Link href="/story" className="w-full">
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full h-auto py-3.5 text-sm md:text-base shadow-sm hover:shadow-md transition-all border border-cyan-200 hover:border-cyan-500 hover:bg-cyan-50/50 dark:hover:bg-cyan-950/20 text-cyan-700 dark:text-cyan-300"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Cpu className="h-5 w-5 text-cyan-500" />
+                                        <span>系统空间</span>
+                                        <span className="rounded bg-cyan-100 px-1 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">
+                                            实验
+                                        </span>
                                     </div>
                                 </Button>
                             </Link>

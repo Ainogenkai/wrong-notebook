@@ -160,8 +160,64 @@
     page-break-after: avoid;
   }
 
-  /* Remove backgrounds for better printing */
-  .bg-muted {
-    background-color: #f5f5f5 !important;
-  }
+    /* Remove backgrounds for better printing */
+    .bg-muted {
+        background-color: #f5f5f5 !important;
+    }
 }
+
+/* ===== 战斗 juice 动画（wb- 前缀，纯 CSS，无依赖） ===== */
+
+@keyframes wb-float-up {
+    0% { opacity: 0; transform: translateY(4px) scale(.8); }
+    15% { opacity: 1; transform: translateY(0) scale(1.15); }
+    100% { opacity: 0; transform: translateY(-34px) scale(1); }
+}
+
+@keyframes wb-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    50% { transform: translateX(4px); }
+    75% { transform: translateX(-3px); }
+}
+
+@keyframes wb-card-play {
+    to { opacity: 0; transform: translateY(-48px) scale(.85); }
+}
+
+@keyframes wb-deal-in {
+    from { opacity: 0; transform: translateY(-14px) rotate(-4deg); }
+}
+
+@keyframes wb-pop {
+    from { opacity: 0; transform: scale(.92); }
+}
+
+@keyframes wb-pulse-danger {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, .0); }
+    50% { box-shadow: 0 0 10px 2px rgba(244, 63, 94, .55); }
+}
+
+@keyframes wb-glow {
+    0%, 100% { filter: drop-shadow(0 0 2px rgba(251, 191, 36, .3)); }
+    50% { filter: drop-shadow(0 0 9px rgba(251, 191, 36, .85)); }
+}
+
+.wb-float-up { animation: wb-float-up .9s ease-out forwards; }
+.wb-shake { animation: wb-shake .3s; }
+.wb-card-play { animation: wb-card-play .28s ease-in forwards; }
+.wb-deal-in { animation: wb-deal-in .3s ease-out; }
+.wb-pop { animation: wb-pop .25s ease-out; }
+.wb-pulse-danger { animation: wb-pulse-danger 1.6s infinite; }
+.wb-victory { filter: drop-shadow(0 0 18px rgba(250, 204, 21, .35)); }
+.wb-defeat { filter: grayscale(.7); opacity: .85; }
+
+/* ===== 像素敌人（待机浮动 + 死亡灰化） ===== */
+
+@keyframes wb-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+
+.wb-bob { animation: wb-bob 2.4s ease-in-out infinite; }
+.wb-sprite-dead { animation: none; filter: grayscale(1); opacity: .35; }

@@ -31,6 +31,9 @@ model User {
   customTags KnowledgeTag[] // User's custom tags
   masteryStates KnowledgeMasteryState[]
   diagnosticQuizzes DiagnosticQuizRecord[]
+  storySession SystemStorySession?
+  storyMessages StoryChatMessage[]
+  cardBattleRecords CardBattleRecord[]
 }
 
 // 统一知识点标签表 (支持无限层级)
@@ -179,5 +182,64 @@ model DiagnosticQuizRecord {
   detailJson  String   // 详细答题记录 JSON
 
   createdAt   DateTime @default(now())
+}
+
+// 系统流剧情会话（宿主状态，每用户一条）
+model SystemStorySession {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stage            Int      @default(1) // 当前剧情阶段 1:月考倒计时 2:月考战役 3:奥赛集训 4:黑科技课题组
+  stageTitle       String   @default("阶段一：月考倒计时")
+  points           Int      @default(0) // 学神积分 SP
+  level            Int      @default(1) // 宿主等级
+  subject          String   @default("physics") // 当前剧情学科 "math" | "physics"
+  grade            String   @default("高一上") // 当前剧情年级
+  currentEventJson String? // 当前进行中的事件+题目 JSON
+  summary          String? // 更早剧情的 AI 压缩摘要（L3 记忆）
+  eventCount       Int      @default(0) // 已完成事件数
+  streak           Int      @default(0) // 连续答对数
+  messages         StoryChatMessage[]
+
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+}
+
+// 系统流对话历史
+model StoryChatMessage {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId        String
+  session          SystemStorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role             String   // "system" | "user"
+  type             String   // "broadcast" | "event" | "question" | "answer" | "settle" | "dialogue"
+  content          String   // 消息正文
+  questionDataJson String? // 内嵌题目数据（如有）
+
+  createdAt        DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// 卡牌战斗战报记录
+model CardBattleRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subject        String   // "math" | "physics"
+  result         String   // "victory" | "defeat"
+  stagesCleared  Int      @default(0)
+  totalStages    Int      @default(8)
+  score          Int      @default(0)
+  deckJson       String   // 卡组快照 JSON
+
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
